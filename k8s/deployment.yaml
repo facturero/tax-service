@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tax-service
+  labels:
+    app: tax-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tax-service
+  template:
+    metadata:
+      labels:
+        app: tax-service
+    spec:
+      containers:
+        - name: tax-service
+          image: ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+          ports:
+            - containerPort: 3005
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "3005"
+            - name: DB_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: tax-db
+                  key: host
+            - name: DB_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: tax-db
+                  key: port
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: tax-db
+                  key: user
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: tax-db
+                  key: password
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: tax-db
+                  key: name
+            - name: CORS_ORIGIN
+              value: "https://tudominio.com"
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "300m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3005
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3005
+            initialDelaySeconds: 5
+            periodSeconds: 10

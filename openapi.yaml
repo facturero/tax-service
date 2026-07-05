@@ -1,0 +1,360 @@
+openapi: 3.0.3
+
+info:
+  title: tax-service API
+  version: 1.0.0
+  description: >
+    Fuente de verdad fiscal de la plataforma: catálogos por país (países, tasas de
+    impuesto, tipos de identificación, tipos de comprobante). Dato de PLATAFORMA, no
+    de tenant: NO se aísla por organización, se particiona por `country_code`.
+
+
+    No verifica JWT: confía en las cabeceras del gateway (`X-User-Id`, `X-Country-Code`,
+    `X-Permissions`). Lecturas: cualquier usuario autenticado. Escrituras (gestión de
+    catálogos): permiso `tax:manage` (administrador de plataforma).
+
+servers:
+  - url: http://localhost:3005
+    description: Desarrollo local (puerto interno; en producción va tras el api-gateway)
+
+tags:
+  - name: health
+  - name: countries
+  - name: catalog
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: Healthcheck
+      responses:
+        '200':
+          description: Operativo
+          content:
+            application/json:
+              schema: { type: object, properties: { status: { type: string, example: ok } } }
+
+  /countries:
+    get:
+      tags: [countries]
+      summary: Listar países habilitados
+      parameters: [{ $ref: '#/components/parameters/UserHeader' }]
+      responses:
+        '200':
+          description: Países habilitados
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Country' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [countries]
+      summary: Habilitar un país (administración)
+      description: Alta de un país + su moneda/decimales. Emite `tax.country.enabled`.
+      x-required-permission: tax:manage
+      parameters: [{ $ref: '#/components/parameters/UserHeader' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EnableCountryRequest' }
+            examples:
+              ec: { value: { code: EC, name: Ecuador, currencyCode: USD, decimals: 2 } }
+      responses:
+        '201':
+          description: País habilitado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Country' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: El país ya existe
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: COUNTRY_EXISTS, message: El país ya está habilitado. }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /countries/{code}:
+    get:
+      tags: [countries]
+      summary: Obtener un país
+      parameters:
+        - { $ref: '#/components/parameters/UserHeader' }
+        - { $ref: '#/components/parameters/CountryCode' }
+      responses:
+        '200':
+          description: País
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Country' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/CountryNotFound' }
+    patch:
+      tags: [countries]
+      summary: Actualizar un país (administración)
+      description: Emite `tax.country.updated`.
+      x-required-permission: tax:manage
+      parameters:
+        - { $ref: '#/components/parameters/UserHeader' }
+        - { $ref: '#/components/parameters/CountryCode' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateCountryRequest' }
+      responses:
+        '200':
+          description: Actualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Country' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/CountryNotFound' }
+
+  /countries/{code}/tax-rates:
+    get:
+      tags: [catalog]
+      summary: Tasas de impuesto del país
+      parameters:
+        - { $ref: '#/components/parameters/UserHeader' }
+        - { $ref: '#/components/parameters/CountryCode' }
+      responses:
+        '200':
+          description: Tasas
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/TaxRate' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [catalog]
+      summary: Crear/actualizar una tasa (administración)
+      description: Upsert por `(country, code)`. Emite `tax.tax_rate.upserted`.
+      x-required-permission: tax:manage
+      parameters:
+        - { $ref: '#/components/parameters/UserHeader' }
+        - { $ref: '#/components/parameters/CountryCode' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpsertTaxRateRequest' }
+            examples:
+              iva: { value: { code: IVA15, name: IVA 15%, percentage: 15, kind: vat, isDefault: true } }
+      responses:
+        '200':
+          description: Tasa creada/actualizada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaxRate' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/CountryNotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /countries/{code}/identification-types:
+    get:
+      tags: [catalog]
+      summary: Tipos de identificación del país
+      parameters:
+        - { $ref: '#/components/parameters/UserHeader' }
+        - { $ref: '#/components/parameters/CountryCode' }
+      responses:
+        '200':
+          description: Tipos de identificación
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/IdentificationType' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [catalog]
+      summary: Crear/actualizar un tipo de identificación (administración)
+      description: Upsert por `(country, code)`. Emite `tax.identification_type.upserted`.
+      x-required-permission: tax:manage
+      parameters:
+        - { $ref: '#/components/parameters/UserHeader' }
+        - { $ref: '#/components/parameters/CountryCode' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpsertIdentificationTypeRequest' }
+            examples:
+              ruc: { value: { code: RUC, name: RUC, regex: "^\\d{13}$" } }
+      responses:
+        '200':
+          description: Creado/actualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IdentificationType' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/CountryNotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /countries/{code}/document-types:
+    get:
+      tags: [catalog]
+      summary: Tipos de comprobante del país
+      parameters:
+        - { $ref: '#/components/parameters/UserHeader' }
+        - { $ref: '#/components/parameters/CountryCode' }
+      responses:
+        '200':
+          description: Tipos de comprobante
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/DocumentType' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [catalog]
+      summary: Crear/actualizar un tipo de comprobante (administración)
+      description: Upsert por `(country, code)`. Emite `tax.document_type.upserted`.
+      x-required-permission: tax:manage
+      parameters:
+        - { $ref: '#/components/parameters/UserHeader' }
+        - { $ref: '#/components/parameters/CountryCode' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpsertDocumentTypeRequest' }
+            examples:
+              factura: { value: { code: "01", name: Factura } }
+      responses:
+        '200':
+          description: Creado/actualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DocumentType' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/CountryNotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+components:
+  parameters:
+    UserHeader:
+      name: X-User-Id
+      in: header
+      required: true
+      description: Usuario autenticado; lo inyecta el gateway desde el JWT.
+      schema: { type: string, format: uuid }
+    CountryCode:
+      name: code
+      in: path
+      required: true
+      description: Código ISO alpha-2 del país (EC, PE, CO, MX).
+      schema: { type: string, minLength: 2, maxLength: 2 }
+
+  schemas:
+    Country:
+      type: object
+      properties:
+        code: { type: string, example: EC }
+        name: { type: string, example: Ecuador }
+        currencyCode: { type: string, example: USD }
+        decimals: { type: integer, example: 2 }
+        enabled: { type: boolean }
+    TaxRate:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        countryCode: { type: string, example: EC }
+        code: { type: string, example: IVA15 }
+        name: { type: string, example: IVA 15% }
+        percentage: { type: number, example: 15 }
+        kind: { type: string, enum: [vat, withholding_iva, withholding_rent, special] }
+        isDefault: { type: boolean }
+    IdentificationType:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        countryCode: { type: string, example: EC }
+        code: { type: string, example: RUC }
+        name: { type: string, example: RUC }
+        regex: { type: string, nullable: true, example: "^\\d{13}$" }
+    DocumentType:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        countryCode: { type: string, example: EC }
+        code: { type: string, example: "01" }
+        name: { type: string, example: Factura }
+    EnableCountryRequest:
+      type: object
+      required: [code, name, currencyCode]
+      properties:
+        code: { type: string, minLength: 2, maxLength: 2 }
+        name: { type: string, maxLength: 100 }
+        currencyCode: { type: string, minLength: 3, maxLength: 3 }
+        decimals: { type: integer, default: 2 }
+    UpdateCountryRequest:
+      type: object
+      properties:
+        name: { type: string, maxLength: 100 }
+        currencyCode: { type: string, minLength: 3, maxLength: 3 }
+        decimals: { type: integer }
+        enabled: { type: boolean }
+    UpsertTaxRateRequest:
+      type: object
+      required: [code, name, percentage, kind]
+      properties:
+        code: { type: string, maxLength: 20 }
+        name: { type: string, maxLength: 100 }
+        percentage: { type: number }
+        kind: { type: string, enum: [vat, withholding_iva, withholding_rent, special] }
+        isDefault: { type: boolean, default: false }
+    UpsertIdentificationTypeRequest:
+      type: object
+      required: [code, name]
+      properties:
+        code: { type: string, maxLength: 20 }
+        name: { type: string, maxLength: 100 }
+        regex: { type: string, maxLength: 255 }
+    UpsertDocumentTypeRequest:
+      type: object
+      required: [code, name]
+      properties:
+        code: { type: string, maxLength: 20 }
+        name: { type: string, maxLength: 100 }
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, example: COUNTRY_NOT_FOUND }
+        message: { type: string }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              message: { type: string }
+
+  responses:
+    ValidationError:
+      description: Error de validación
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { code: VALIDATION_ERROR, message: La petición no es válida. }
+    Unauthorized:
+      description: Falta contexto de usuario (X-User-Id)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { code: USER_CONTEXT_REQUIRED, message: Falta el contexto de usuario. }
+    Forbidden:
+      description: Permiso insuficiente (requiere tax:manage)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { code: FORBIDDEN, message: Permiso insuficiente. }
+    CountryNotFound:
+      description: País no encontrado
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { code: COUNTRY_NOT_FOUND, message: País no encontrado. }

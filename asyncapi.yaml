@@ -1,0 +1,176 @@
+asyncapi: 3.0.0
+
+info:
+  title: tax-service — Eventos
+  version: 1.0.0
+  description: >
+    Eventos de tax-service (fuente de verdad fiscal) sobre RabbitMQ. Publica cuando
+    cambia un catálogo; otros servicios construyen read-models locales a partir de
+    estos eventos (organization: países; customer: tipos de identificación; product/
+    billing: tasas y comprobantes). tax NO consume eventos. Los payloads llevan la
+    fila completa para que el consumidor haga upsert sin más consultas.
+
+
+    Los eventos se escriben con el patrón Outbox (incluido el seed inicial de EC).
+    Exchange topic `crm.events`; routing key = `type` del evento.
+
+defaultContentType: application/json
+
+servers:
+  rabbitmq:
+    host: localhost:5672
+    protocol: amqp
+    description: Broker RabbitMQ (dev). En producción, RABBITMQ_URL.
+    bindings:
+      amqp:
+        vhost: /
+
+channels:
+  countryEnabled:
+    address: tax.country.enabled
+    description: Se habilitó un país (alta en el catálogo, incluido el seed).
+    servers: [{ $ref: '#/servers/rabbitmq' }]
+    bindings:
+      amqp: { is: routingKey, exchange: { name: crm.events, type: topic, durable: true, vhost: / } }
+    messages:
+      countryEnabled: { $ref: '#/components/messages/CountryEnabled' }
+
+  countryUpdated:
+    address: tax.country.updated
+    description: Cambió la configuración de un país (moneda, decimales, enabled).
+    servers: [{ $ref: '#/servers/rabbitmq' }]
+    bindings:
+      amqp: { is: routingKey, exchange: { name: crm.events, type: topic, durable: true, vhost: / } }
+    messages:
+      countryUpdated: { $ref: '#/components/messages/CountryUpdated' }
+
+  taxRateUpserted:
+    address: tax.tax_rate.upserted
+    description: Se creó o actualizó una tasa de impuesto.
+    servers: [{ $ref: '#/servers/rabbitmq' }]
+    bindings:
+      amqp: { is: routingKey, exchange: { name: crm.events, type: topic, durable: true, vhost: / } }
+    messages:
+      taxRateUpserted: { $ref: '#/components/messages/TaxRateUpserted' }
+
+  identificationTypeUpserted:
+    address: tax.identification_type.upserted
+    description: Se creó o actualizó un tipo de identificación.
+    servers: [{ $ref: '#/servers/rabbitmq' }]
+    bindings:
+      amqp: { is: routingKey, exchange: { name: crm.events, type: topic, durable: true, vhost: / } }
+    messages:
+      identificationTypeUpserted: { $ref: '#/components/messages/IdentificationTypeUpserted' }
+
+  documentTypeUpserted:
+    address: tax.document_type.upserted
+    description: Se creó o actualizó un tipo de comprobante.
+    servers: [{ $ref: '#/servers/rabbitmq' }]
+    bindings:
+      amqp: { is: routingKey, exchange: { name: crm.events, type: topic, durable: true, vhost: / } }
+    messages:
+      documentTypeUpserted: { $ref: '#/components/messages/DocumentTypeUpserted' }
+
+operations:
+  publishCountryEnabled:
+    action: send
+    channel: { $ref: '#/channels/countryEnabled' }
+    summary: Emite tax.country.enabled (organization crea/actualiza su read-model de países).
+  publishCountryUpdated:
+    action: send
+    channel: { $ref: '#/channels/countryUpdated' }
+    summary: Emite tax.country.updated.
+  publishTaxRateUpserted:
+    action: send
+    channel: { $ref: '#/channels/taxRateUpserted' }
+    summary: Emite tax.tax_rate.upserted (product/billing actualizan su read-model de tasas).
+  publishIdentificationTypeUpserted:
+    action: send
+    channel: { $ref: '#/channels/identificationTypeUpserted' }
+    summary: Emite tax.identification_type.upserted (customer actualiza su read-model).
+  publishDocumentTypeUpserted:
+    action: send
+    channel: { $ref: '#/channels/documentTypeUpserted' }
+    summary: Emite tax.document_type.upserted (billing actualiza su read-model).
+
+components:
+  messageTraits:
+    eventEnvelope:
+      headers:
+        type: object
+        properties:
+          eventId: { type: string, format: uuid, description: Idempotencia. }
+          type: { type: string, description: Tipo del evento = routing key. }
+          occurredAt: { type: string, format: date-time }
+          countryCode: { type: string, description: País del catálogo afectado. }
+
+  messages:
+    CountryEnabled:
+      name: tax.country.enabled
+      title: País habilitado
+      contentType: application/json
+      traits: [{ $ref: '#/components/messageTraits/eventEnvelope' }]
+      payload: { $ref: '#/components/schemas/CountryPayload' }
+    CountryUpdated:
+      name: tax.country.updated
+      title: País actualizado
+      contentType: application/json
+      traits: [{ $ref: '#/components/messageTraits/eventEnvelope' }]
+      payload: { $ref: '#/components/schemas/CountryPayload' }
+    TaxRateUpserted:
+      name: tax.tax_rate.upserted
+      title: Tasa de impuesto creada/actualizada
+      contentType: application/json
+      traits: [{ $ref: '#/components/messageTraits/eventEnvelope' }]
+      payload: { $ref: '#/components/schemas/TaxRatePayload' }
+    IdentificationTypeUpserted:
+      name: tax.identification_type.upserted
+      title: Tipo de identificación creado/actualizado
+      contentType: application/json
+      traits: [{ $ref: '#/components/messageTraits/eventEnvelope' }]
+      payload: { $ref: '#/components/schemas/IdentificationTypePayload' }
+    DocumentTypeUpserted:
+      name: tax.document_type.upserted
+      title: Tipo de comprobante creado/actualizado
+      contentType: application/json
+      traits: [{ $ref: '#/components/messageTraits/eventEnvelope' }]
+      payload: { $ref: '#/components/schemas/DocumentTypePayload' }
+
+  schemas:
+    CountryPayload:
+      type: object
+      required: [countryCode, name]
+      properties:
+        countryCode: { type: string, example: EC }
+        name: { type: string, example: Ecuador }
+        currencyCode: { type: string, example: USD }
+        decimals: { type: integer, example: 2 }
+        enabled: { type: boolean, example: true }
+    TaxRatePayload:
+      type: object
+      required: [id, countryCode, code, percentage, kind]
+      properties:
+        id: { type: string, format: uuid }
+        countryCode: { type: string, example: EC }
+        code: { type: string, example: IVA15 }
+        name: { type: string, example: IVA 15% }
+        percentage: { type: number, example: 15 }
+        kind: { type: string, example: vat }
+        isDefault: { type: boolean, example: true }
+    IdentificationTypePayload:
+      type: object
+      required: [id, countryCode, code]
+      properties:
+        id: { type: string, format: uuid }
+        countryCode: { type: string, example: EC }
+        code: { type: string, example: RUC }
+        name: { type: string, example: RUC }
+        regex: { type: string, nullable: true, example: "^\\d{13}$" }
+    DocumentTypePayload:
+      type: object
+      required: [id, countryCode, code]
+      properties:
+        id: { type: string, format: uuid }
+        countryCode: { type: string, example: EC }
+        code: { type: string, example: "01" }
+        name: { type: string, example: Factura }
