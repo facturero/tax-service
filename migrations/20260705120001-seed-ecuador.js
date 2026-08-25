@@ -16,6 +16,7 @@ module.exports = {
       { code: 'CEDULA', name: 'Cédula', regex: '^\\d{10}$' },
       { code: 'PASAPORTE', name: 'Pasaporte', regex: null },
       { code: 'CONSUMIDOR_FINAL', name: 'Consumidor final', regex: '^9{13}$' },
+      { code: 'EXTERIOR', name: 'Identificación del exterior', regex: null },
     ];
 
     const docTypes = [
