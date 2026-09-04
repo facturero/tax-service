@@ -10,6 +10,7 @@ const schema = z.object({
   DB_PASSWORD: z.string().default(''),
   DB_NAME: z.string().min(1),
   CORS_ORIGIN: z.string().default('*'),
+  RABBITMQ_URL: z.string().optional(),
 });
 
 const parsed = schema.safeParse(process.env);
@@ -33,6 +34,7 @@ export interface AppConfig {
   DB_PASSWORD: string;
   DB_NAME: string;
   CORS_ORIGIN: string;
+  RABBITMQ_URL?: string;
 }
 
 export const config: AppConfig = {
@@ -44,4 +46,5 @@ export const config: AppConfig = {
   DB_PASSWORD: env.DB_PASSWORD,
   DB_NAME: env.DB_NAME,
   CORS_ORIGIN: env.CORS_ORIGIN,
+  RABBITMQ_URL: env.RABBITMQ_URL,
 };

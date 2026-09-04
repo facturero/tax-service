@@ -15,6 +15,7 @@ import { UpsertIdentificationTypeUseCase } from './application/use-cases/upsert-
 import { ListDocumentTypesUseCase } from './application/use-cases/list-document-types';
 import { UpsertDocumentTypeUseCase } from './application/use-cases/upsert-document-type';
 import { createApp } from './interface/http/app';
+import { OutboxRelay } from '@facturero/outbox-relay';
 
 async function main(): Promise<void> {
   await sequelize.authenticate();
@@ -42,6 +43,17 @@ async function main(): Promise<void> {
   serve({ fetch: app.fetch, port: config.PORT }, (info) => {
     console.log(`tax-service escuchando en http://localhost:${info.port}`);
   });
+
+  if (config.RABBITMQ_URL) {
+    const relay = new OutboxRelay({
+      sequelize,
+      rabbitmqUrl: config.RABBITMQ_URL,
+      exchange: 'crm.events',
+    });
+    await relay.start();
+    // eslint-disable-next-line no-console
+    console.log('[messaging] outbox relay iniciado');
+  }
 }
 
 main().catch((e) => {
