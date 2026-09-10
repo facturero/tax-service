@@ -14,6 +14,43 @@ spec:
       labels:
         app: tax-service
     spec:
+      initContainers:
+        - name: tax-migrate
+          image: ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+          securityContext:
+            runAsUser: 0
+          command:
+            - sh
+            - -c
+            - "npx sequelize-cli db:migrate"
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: DB_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: tax-db
+                  key: host
+            - name: DB_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: tax-db
+                  key: port
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: tax-db
+                  key: user
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: tax-db
+                  key: password
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: tax-db
+                  key: name
       containers:
         - name: tax-service
           image: ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
